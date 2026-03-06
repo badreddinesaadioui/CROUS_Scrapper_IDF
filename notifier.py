@@ -106,7 +106,7 @@ def send_alert(item: dict):
                 name=SENDER_NAME,
             ),
             to=[
-                SendTransacEmailRequestToItem(email=email, name="")
+                SendTransacEmailRequestToItem(email=email, name=email.split("@")[0])
                 for email in recipients
             ],
             subject=f"🏠 CROUS room available: {name}",
