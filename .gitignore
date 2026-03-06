@@ -10,7 +10,7 @@ crous.log
 
 # generated CSVs (built locally by running build_csv.py + filter_idf.py)
 all_accommodations.csv
-idf_accommodations.csv
+# idf_accommodations.csv is committed so Railway can use it without rebuilding
 
 # python
 __pycache__/
