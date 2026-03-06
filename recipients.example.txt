@@ -1,6 +1,0 @@
-# Copy this file to recipients.txt and add one email per line.
-# Lines starting with # are ignored.
-# If recipients.txt doesn't exist, the bot falls back to RECIPIENT_EMAIL in .env.
-
-you@example.com
-friend@example.com

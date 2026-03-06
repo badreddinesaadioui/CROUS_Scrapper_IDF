@@ -13,29 +13,14 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_NAME = "CROUS Bot"
 
 # --- Recipients ---
-# Add one email per line in recipients.txt
-# Falls back to RECIPIENT_EMAIL in .env if the file doesn't exist
-RECIPIENTS_FILE = "recipients.txt"
+# Comma-separated list of emails in RECIPIENT_EMAIL env var
+# e.g. RECIPIENT_EMAIL=you@gmail.com,friend@gmail.com
 
 
 def load_recipients() -> list:
-    """Load recipient emails from recipients.txt, one per line."""
-    if os.path.exists(RECIPIENTS_FILE):
-        with open(RECIPIENTS_FILE, "r", encoding="utf-8") as f:
-            emails = [
-                line.strip()
-                for line in f
-                if line.strip() and not line.strip().startswith("#")
-            ]
-        if emails:
-            return emails
-
-    # Fallback to single RECIPIENT_EMAIL from .env
-    fallback = os.getenv("RECIPIENT_EMAIL")
-    if fallback:
-        return [fallback]
-
-    return []
+    """Load recipient emails from RECIPIENT_EMAIL env var (comma-separated)."""
+    value = os.getenv("RECIPIENT_EMAIL", "")
+    return [e.strip() for e in value.split(",") if e.strip()]
 
 
 # --- State file (persists seen listing IDs across restarts) ---

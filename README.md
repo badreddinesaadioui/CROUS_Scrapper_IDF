@@ -67,24 +67,15 @@ You can also just leave it running on your machine — keep the terminal open an
 
 Or deploy it to Railway so your machine doesn't have to stay on. Push to a private GitHub repo, go to railway.app, connect the repo, add your 3 env vars in the Variables tab and it runs as a persistent background worker for free.
 
-## Recipients
-
-By default the bot reads from `recipients.txt` — one email per line, lines starting with `#` are ignored. Copy the example file to get started:
-
-```bash
-cp recipients.example.txt recipients.txt
-# then open recipients.txt and add your email(s)
-```
-
-If `recipients.txt` doesn't exist it falls back to `RECIPIENT_EMAIL` in `.env`, so the single-email setup still works.
-
 ## Environment variables
 
 | Variable | What it is |
 |---|---|
 | `BREVO_API_KEY` | Your Brevo API key |
 | `SENDER_EMAIL` | The address emails are sent from (must be verified in Brevo) |
-| `RECIPIENT_EMAIL` | Fallback recipient if recipients.txt doesn't exist |
+| `RECIPIENT_EMAIL` | Who gets the alerts — separate multiple emails with commas |
+
+For multiple recipients just comma-separate them: `you@gmail.com,friend@gmail.com,other@gmail.com`
 
 ## Files
 
@@ -99,7 +90,6 @@ crous_scrapper/
 ├── filter_idf.py    - one-time: filters that CSV down to IDF only
 ├── requirements.txt
 ├── .env.example
-├── recipients.example.txt
 ├── .gitignore
 ├── Procfile         - for Railway
 └── railway.json     - for Railway

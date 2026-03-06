@@ -1,9 +1,6 @@
 # secrets
 .env
 
-# personal recipient list (create your own from recipients.example.txt)
-recipients.txt
-
 # runtime state
 seen_ids.json
 crous.log
