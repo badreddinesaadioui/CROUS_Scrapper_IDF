@@ -1,0 +1,73 @@
+name: CROUS Monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: crous-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore previous state artifact
+        uses: dawidd6/action-download-artifact@v11
+        with:
+          workflow: crous-monitor.yml
+          name: seen-state
+          path: .
+          search_artifacts: true
+          if_no_artifact_found: warn
+
+      - name: Ensure valid state file
+        run: |
+          if [ ! -f seen_ids.json ]; then
+            echo "[]" > seen_ids.json
+          fi
+          python - <<'PY'
+          import json
+          path = "seen_ids.json"
+          try:
+              with open(path, "r", encoding="utf-8") as f:
+                  json.load(f)
+          except Exception:
+              with open(path, "w", encoding="utf-8") as f:
+                  json.dump([], f)
+          PY
+
+      - name: Run monitor once
+        env:
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          RUN_ONCE: "true"
+        run: python main.py
+
+      - name: Upload updated state artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seen-state
+          path: seen_ids.json
+          retention-days: 90
+          overwrite: true

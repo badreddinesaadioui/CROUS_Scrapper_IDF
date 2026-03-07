@@ -42,6 +42,7 @@ def check(idf_rows: List[dict], seen_ids: set) -> set:
 
     if not available:
         logging.info("Nothing available right now. Patience...")
+        save_seen_ids(seen_ids)
         return seen_ids
 
     new_listings = [item for item in available if str(item.get("id")) not in seen_ids]
@@ -76,6 +77,15 @@ def main():
     else:
         seen_ids = load_seen_ids()
         logging.info(f"Loaded {len(seen_ids)} previously seen IDs from state.")
+
+    run_once = os.getenv("RUN_ONCE", "").lower() == "true"
+    if run_once:
+        logging.info("RUN_ONCE=true — running a single scan and exiting.")
+        try:
+            check(idf_rows, seen_ids)
+        except Exception as e:
+            logging.error(f"Unhandled error during single scan: {e}", exc_info=True)
+        return
 
     while True:
         try:
