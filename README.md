@@ -41,10 +41,12 @@ cp .env.example .env
 # open .env and fill your SMTP credentials
 ```
 
-You need one SMTP account for sending emails (for example Gmail, Outlook, Brevo SMTP, etc.):
-1. Set SMTP host/port/security in `.env`
-2. Set `SMTP_USERNAME` and `SMTP_PASSWORD` (app password if required by provider)
-3. Set `SENDER_EMAIL` and `RECIPIENT_EMAIL`
+Minimal setup (Gmail):
+1. Set `SENDER_EMAIL`
+2. Set `RECIPIENT_EMAIL`
+3. Set `EMAIL_APP_PASSWORD` (Google App Password)
+
+Advanced setup (optional): override `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
 
 ## Running it
 
@@ -65,19 +67,20 @@ It'll sit there scanning all ~420 IDF rooms every 60 seconds and email you the i
 
 You can also just leave it running on your machine — keep the terminal open and don't close the laptop. If you close the lid on a MacBook it will sleep even if plugged in and the script stops. To avoid that go to System Settings -> Battery -> Options and enable "Prevent automatic sleeping when the display is off".
 
-Or deploy it to Railway so your machine doesn't have to stay on. Push to a private GitHub repo, go to railway.app, connect the repo, add your 3 env vars in the Variables tab and it runs as a persistent background worker for free.
+Or deploy it for free on GitHub Actions (already configured in `.github/workflows/crous-monitor.yml`). It runs in the cloud even if your computer is off.
 
 ## Environment variables
 
 | Variable | What it is |
 |---|---|
-| `SMTP_HOST` | SMTP server hostname (e.g. `smtp.gmail.com`) |
-| `SMTP_PORT` | SMTP port (usually `587` for starttls, `465` for ssl) |
-| `SMTP_SECURITY` | `starttls`, `ssl`, or `none` |
-| `SMTP_USERNAME` | SMTP login username |
-| `SMTP_PASSWORD` | SMTP login password (often an app password) |
+| `EMAIL_APP_PASSWORD` | App password (recommended for Gmail) |
 | `SENDER_EMAIL` | Sender email shown in outgoing alerts |
 | `RECIPIENT_EMAIL` | Who gets the alerts — separate multiple emails with commas |
+| `SMTP_HOST` | Optional manual SMTP host override |
+| `SMTP_PORT` | Optional manual SMTP port override |
+| `SMTP_SECURITY` | Optional: `starttls`, `ssl`, or `none` |
+| `SMTP_USERNAME` | Optional manual SMTP username override |
+| `SMTP_PASSWORD` | Optional manual SMTP password override |
 
 For multiple recipients just comma-separate them: `you@gmail.com,friend@gmail.com,other@gmail.com`
 

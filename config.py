@@ -8,6 +8,14 @@ TOOL_ID = 42
 POLL_INTERVAL = 60  # seconds between each full scan of IDF accommodations
 
 
+def _read_str_env(name: str):
+    value = os.getenv(name)
+    if value is None:
+        return None
+    value = value.strip()
+    return value if value else None
+
+
 def _read_int_env(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None or value.strip() == "":
@@ -18,16 +26,35 @@ def _read_int_env(name: str, default: int) -> int:
         return default
 
 
+def _infer_smtp(sender_email: str):
+    if not sender_email or "@" not in sender_email:
+        return None, 587, "starttls"
+
+    domain = sender_email.split("@", 1)[1].lower()
+    if domain in {"gmail.com", "googlemail.com"}:
+        return "smtp.gmail.com", 587, "starttls"
+    if domain in {"outlook.com", "hotmail.com", "live.com", "msn.com"}:
+        return "smtp.office365.com", 587, "starttls"
+    if domain in {"yahoo.com", "yahoo.fr", "ymail.com"}:
+        return "smtp.mail.yahoo.com", 587, "starttls"
+
+    return None, 587, "starttls"
+
+
+# --- Sender/recipients ---
+# Defaults requested by user; can still be overridden by env vars.
+SENDER_EMAIL = _read_str_env("SENDER_EMAIL") or "outaboo532@gmail.com"
+SENDER_NAME = "CROUS Bot"
+
+
 # --- SMTP email transport ---
 # Supported values for SMTP_SECURITY: "starttls", "ssl", "none"
-SMTP_HOST = os.getenv("SMTP_HOST")
-SMTP_PORT = _read_int_env("SMTP_PORT", 587)
-SMTP_SECURITY = os.getenv("SMTP_SECURITY", "starttls").strip().lower()
-SMTP_USERNAME = os.getenv("SMTP_USERNAME")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-
-SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-SENDER_NAME = "CROUS Bot"
+_default_host, _default_port, _default_security = _infer_smtp(SENDER_EMAIL)
+SMTP_HOST = _read_str_env("SMTP_HOST") or _default_host
+SMTP_PORT = _read_int_env("SMTP_PORT", _default_port)
+SMTP_SECURITY = (_read_str_env("SMTP_SECURITY") or _default_security).lower()
+SMTP_USERNAME = _read_str_env("SMTP_USERNAME") or SENDER_EMAIL
+SMTP_PASSWORD = _read_str_env("SMTP_PASSWORD") or _read_str_env("EMAIL_APP_PASSWORD")
 
 # --- Recipients ---
 # Comma-separated list of emails in RECIPIENT_EMAIL env var
@@ -36,7 +63,7 @@ SENDER_NAME = "CROUS Bot"
 
 def load_recipients() -> list:
     """Load recipient emails from RECIPIENT_EMAIL env var (comma-separated)."""
-    value = os.getenv("RECIPIENT_EMAIL", "")
+    value = os.getenv("RECIPIENT_EMAIL", "abderrazzak.outzoula@centrale-casablanca.ma")
     return [e.strip() for e in value.split(",") if e.strip()]
 
 

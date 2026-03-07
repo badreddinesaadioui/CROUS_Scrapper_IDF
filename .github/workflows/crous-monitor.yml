@@ -65,13 +65,9 @@ jobs:
 
       - name: Run monitor once
         env:
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_SECURITY: ${{ secrets.SMTP_SECURITY }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          SENDER_EMAIL: outaboo532@gmail.com
+          RECIPIENT_EMAIL: abderrazzak.outzoula@centrale-casablanca.ma
           RESET_STATE: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_state || 'false' }}
           RUN_ONCE: "true"
         run: python main.py
