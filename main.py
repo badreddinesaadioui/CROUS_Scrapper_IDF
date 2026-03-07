@@ -42,6 +42,8 @@ def check(idf_rows: List[dict], seen_ids: set) -> set:
 
     if not available:
         logging.info("Nothing available right now. Patience...")
+        if not send_alerts([]):
+            logging.warning("Failed to send status email; will retry next scan.")
         save_seen_ids(seen_ids)
         return seen_ids
 
@@ -61,7 +63,9 @@ def check(idf_rows: List[dict], seen_ids: set) -> set:
                 len(new_listings),
             )
     else:
-        logging.info(f"{len(available)} available but all already seen — no new alerts.")
+        logging.info(f"{len(available)} available but all already seen — sending status email.")
+        if not send_alerts([]):
+            logging.warning("Failed to send status email; will retry next scan.")
 
     save_seen_ids(seen_ids)
     return seen_ids

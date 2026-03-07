@@ -5,7 +5,7 @@ load_dotenv()
 
 # --- CROUS API ---
 TOOL_ID = 42
-POLL_INTERVAL = 1800  # 30 minutes between each full scan of IDF accommodations
+POLL_INTERVAL = 900  # 15 minutes between each full scan of IDF accommodations
 
 
 def _read_str_env(name: str):

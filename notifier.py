@@ -13,6 +13,7 @@ from config import (
     SMTP_SECURITY,
     SMTP_USERNAME,
     SMTP_PASSWORD,
+    POLL_INTERVAL,
     SENDER_EMAIL,
     SENDER_NAME,
     load_recipients,
@@ -52,6 +53,18 @@ def _extract_listing(item: dict) -> dict:
 
 
 def _build_batch_html(items: List[dict]) -> str:
+    interval_minutes = max(1, POLL_INTERVAL // 60)
+    if not items:
+        return f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #e63946;">CROUS update ({interval_minutes} min)</h2>
+            <p><strong>Pas de logement dispo.</strong></p>
+            <p style="color: #888; font-size: 12px;">Sent by your CROUS scraper bot.</p>
+        </body>
+        </html>
+        """
+
     rows = []
     for item in items:
         listing = _extract_listing(item)
@@ -72,7 +85,7 @@ def _build_batch_html(items: List[dict]) -> str:
     return f"""
     <html>
     <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-        <h2 style="color: #e63946;">CROUS: {len(items)} new listing(s) in the last 30 minutes</h2>
+        <h2 style="color: #e63946;">CROUS: {len(items)} new listing(s) in the last {interval_minutes} minutes</h2>
         <table style="border-collapse: collapse; width: 100%; font-size: 14px;">
             <thead>
                 <tr style="background: #f6f6f6;">
@@ -97,17 +110,22 @@ def _build_batch_html(items: List[dict]) -> str:
 
 
 def _build_message(items: List[dict], recipients: List[str]) -> EmailMessage:
+    interval_minutes = max(1, POLL_INTERVAL // 60)
     msg = EmailMessage()
     msg["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
     msg["To"] = ", ".join(recipients)
-    msg["Subject"] = f"CROUS alert: {len(items)} new listing(s)"
+    if items:
+        msg["Subject"] = f"CROUS alert: {len(items)} new listing(s)"
+        lines = [f"New CROUS listings detected in the last {interval_minutes} minutes:", ""]
+        for item in items:
+            listing = _extract_listing(item)
+            lines.append(f"- {listing['name']} ({listing['rent']})")
+            lines.append(f"  {listing['url']}")
+        msg.set_content("\n".join(lines))
+    else:
+        msg["Subject"] = "CROUS update: pas de logement dispo"
+        msg.set_content(f"Pas de logement dispo sur les {interval_minutes} dernieres minutes.")
 
-    lines = ["New CROUS listings detected in the last 30 minutes:", ""]
-    for item in items:
-        listing = _extract_listing(item)
-        lines.append(f"- {listing['name']} ({listing['rent']})")
-        lines.append(f"  {listing['url']}")
-    msg.set_content("\n".join(lines))
     msg.add_alternative(_build_batch_html(items), subtype="html")
     return msg
 
@@ -151,9 +169,6 @@ def _open_smtp():
 
 
 def send_alerts(items: List[dict]) -> bool:
-    if not items:
-        return True
-
     recipients = load_recipients()
     if not recipients:
         logging.error("No recipients configured. Set RECIPIENT_EMAIL in .env.")
@@ -166,7 +181,14 @@ def send_alerts(items: List[dict]) -> bool:
         with _open_smtp() as client:
             client.login(SMTP_USERNAME, SMTP_PASSWORD)
             client.send_message(msg)
-        logging.info("Batch email sent for %d listing(s) -> %s", len(items), ", ".join(recipients))
+        if items:
+            logging.info(
+                "Batch email sent for %d new listing(s) -> %s",
+                len(items),
+                ", ".join(recipients),
+            )
+        else:
+            logging.info("Status email sent (pas de logement dispo) -> %s", ", ".join(recipients))
         return True
     except Exception as e:
         logging.error("Unexpected SMTP error while sending batch email: %s", e)
