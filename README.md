@@ -2,7 +2,10 @@
 
 I was looking for a student room in Paris and quickly realized the CROUS website is kind of a joke to navigate. The map search only shows rooms that are "actively listed" — meaning most of the time it's just empty and you think nothing's available. But turns out there's a whole database of rooms sitting behind the scenes with IDs from 1 to 3132, each with their own page, and some of them quietly flip to available without ever showing up on the map.
 
-So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls them every 15 minutes. You always get one email per window: either a recap of new rooms or a "pas de logement dispo" status.
+So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls on a weekday schedule:
+- Tuesday + Thursday: every 5 minutes
+- Monday + Wednesday + Friday: every 15 minutes
+- Weekend: no email
 
 Zero paid services. Just Python and a standard SMTP account.
 
@@ -21,7 +24,7 @@ Call it with any ID from 1 to 3132 and you get back full room details including 
 ```
 build_csv.py   ->  hits all 3132 IDs once, dumps everything to all_accommodations.csv
 filter_idf.py  ->  keeps only IDF (Paris + suburbs + Clichy), saves idf_accommodations.csv
-main.py        ->  polls those ~420 rooms every 15min, sends one email each window
+main.py        ->  polls on a weekday schedule and sends one email per scan window
 ```
 
 When a room drops, the email tells you the name and full address of the residence, rent in euros (the API stores it in cents for some reason, we convert it), room size in m2, whether it's solo, couple or coloc, and what equipment is included.
@@ -63,7 +66,10 @@ Then run the bot:
 python3 main.py
 ```
 
-It'll scan all ~420 IDF rooms every 15 minutes and send one email per scan window (new listings recap or "pas de logement dispo").
+It'll scan all ~420 IDF rooms and send one email per scan window:
+- Tuesday + Thursday: every 5 minutes
+- Monday + Wednesday + Friday: every 15 minutes
+- Saturday + Sunday: no email
 
 You can also just leave it running on your machine — keep the terminal open and don't close the laptop. If you close the lid on a MacBook it will sleep even if plugged in and the script stops. To avoid that go to System Settings -> Battery -> Options and enable "Prevent automatic sleeping when the display is off".
 

@@ -1,11 +1,37 @@
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # --- CROUS API ---
 TOOL_ID = 42
-POLL_INTERVAL = 900  # 15 minutes between each full scan of IDF accommodations
+try:
+    LOCAL_TIMEZONE = ZoneInfo("Europe/Paris")
+except Exception:
+    LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
+FAST_SCAN_WEEKDAYS = {1, 3}  # Tuesday, Thursday
+FAST_POLL_INTERVAL = 300  # 5 minutes
+DEFAULT_POLL_INTERVAL = 900  # 15 minutes
+
+
+def current_local_time() -> datetime:
+    return datetime.now(LOCAL_TIMEZONE)
+
+
+def is_weekend(now: datetime | None = None) -> bool:
+    current = now or current_local_time()
+    return current.weekday() >= 5  # Saturday, Sunday
+
+
+def get_current_poll_interval(now: datetime | None = None) -> int:
+    current = now or current_local_time()
+    return FAST_POLL_INTERVAL if current.weekday() in FAST_SCAN_WEEKDAYS else DEFAULT_POLL_INTERVAL
+
+
+# Backward-compatible constant; main loop uses get_current_poll_interval().
+POLL_INTERVAL = DEFAULT_POLL_INTERVAL
 
 
 def _read_str_env(name: str):

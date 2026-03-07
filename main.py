@@ -21,7 +21,7 @@ from typing import List
 from scraper import load_idf_ids, fetch_available_accommodations
 from notifier import send_alerts
 from state import load_seen_ids, save_seen_ids
-from config import POLL_INTERVAL
+from config import get_current_poll_interval, is_weekend
 import os
 
 logging.basicConfig(
@@ -38,6 +38,11 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def check(idf_rows: List[dict], seen_ids: set) -> set:
+    if is_weekend():
+        logging.info("Weekend mode active: skipping scan and emails.")
+        save_seen_ids(seen_ids)
+        return seen_ids
+
     available = fetch_available_accommodations(idf_rows)
 
     if not available:
@@ -107,8 +112,9 @@ def main():
         except Exception as e:
             logging.error(f"Unhandled error: {e}", exc_info=True)
 
-        logging.info(f"Next scan in {POLL_INTERVAL}s...\n")
-        time.sleep(POLL_INTERVAL)
+        poll_interval = get_current_poll_interval()
+        logging.info(f"Next scan in {poll_interval}s...\n")
+        time.sleep(poll_interval)
 
 
 if __name__ == "__main__":

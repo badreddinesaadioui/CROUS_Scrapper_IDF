@@ -13,7 +13,7 @@ from config import (
     SMTP_SECURITY,
     SMTP_USERNAME,
     SMTP_PASSWORD,
-    POLL_INTERVAL,
+    get_current_poll_interval,
     SENDER_EMAIL,
     SENDER_NAME,
     load_recipients,
@@ -53,7 +53,7 @@ def _extract_listing(item: dict) -> dict:
 
 
 def _build_batch_html(items: List[dict]) -> str:
-    interval_minutes = max(1, POLL_INTERVAL // 60)
+    interval_minutes = max(1, get_current_poll_interval() // 60)
     if not items:
         return f"""
         <html>
@@ -110,7 +110,7 @@ def _build_batch_html(items: List[dict]) -> str:
 
 
 def _build_message(items: List[dict], recipients: List[str]) -> EmailMessage:
-    interval_minutes = max(1, POLL_INTERVAL // 60)
+    interval_minutes = max(1, get_current_poll_interval() // 60)
     msg = EmailMessage()
     msg["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
     msg["To"] = ", ".join(recipients)
