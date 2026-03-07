@@ -151,13 +151,13 @@ def _open_smtp():
     return client
 
 
-def send_alert(item: dict):
+def send_alert(item: dict) -> bool:
     recipients = load_recipients()
     if not recipients:
         logging.error("No recipients configured. Set RECIPIENT_EMAIL in .env.")
-        return
+        return False
     if _missing_smtp_config():
-        return
+        return False
 
     msg = _build_message(item, recipients)
     residence = item.get("residence", {})
@@ -168,5 +168,7 @@ def send_alert(item: dict):
             client.login(SMTP_USERNAME, SMTP_PASSWORD)
             client.send_message(msg)
         logging.info("Email sent for listing: %s -> %s", name, ", ".join(recipients))
+        return True
     except Exception as e:
         logging.error("Unexpected SMTP error while sending email: %s", e)
+        return False

@@ -51,8 +51,13 @@ def check(idf_rows: List[dict], seen_ids: set) -> set:
         logging.info(f"🎉 {len(new_listings)} NEW listing(s) found!")
         for item in new_listings:
             acc_id = str(item.get("id"))
-            seen_ids.add(acc_id)
-            send_alert(item)
+            if send_alert(item):
+                seen_ids.add(acc_id)
+            else:
+                logging.warning(
+                    "Alert send failed for listing %s; will retry on next scan.",
+                    acc_id,
+                )
     else:
         logging.info(f"{len(available)} available but all already seen — no new alerts.")
 
