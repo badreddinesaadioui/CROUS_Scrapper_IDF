@@ -1,120 +1,200 @@
 """
-Sends email notifications via brevo-python v4 SDK (imported as 'brevo').
+Sends email notifications via standard SMTP (Gmail/Outlook/other providers).
 """
 import logging
-from brevo import Brevo
-from brevo.core.api_error import ApiError
-from brevo.transactional_emails import (
-    SendTransacEmailRequestSender,
-    SendTransacEmailRequestToItem,
+import smtplib
+import ssl
+from email.message import EmailMessage
+from typing import List
+
+from config import (
+    SMTP_HOST,
+    SMTP_PORT,
+    SMTP_SECURITY,
+    SMTP_USERNAME,
+    SMTP_PASSWORD,
+    get_current_poll_interval,
+    SENDER_EMAIL,
+    SENDER_NAME,
+    load_recipients,
 )
-from config import BREVO_API_KEY, SENDER_EMAIL, SENDER_NAME, load_recipients
 
 
-def build_html(item: dict) -> str:
-    # Residence info is nested
+def _extract_listing(item: dict) -> dict:
     residence = item.get("residence", {})
     name = item.get("label", residence.get("label", "N/A"))
     address = residence.get("address", "N/A")
     listing_url = item.get("url", "https://trouverunlogement.lescrous.fr/")
 
-    # Rent: API returns cents, convert to euros
     occupation_modes = item.get("occupationModes", [])
     rents = []
     mode_types = []
-    for m in occupation_modes:
-        mode_types.append(m.get("type", ""))
-        r = m.get("rent", {})
-        if r.get("min"):
-            rents.append(r["min"] / 100)
-        if r.get("max"):
-            rents.append(r["max"] / 100)
-    rent_str = f"{min(rents):.0f}–{max(rents):.0f} €/month" if rents else "N/A"
+    for mode in occupation_modes:
+        mode_types.append(mode.get("type", ""))
+        rent = mode.get("rent", {})
+        if rent.get("min"):
+            rents.append(rent["min"] / 100)
+        if rent.get("max"):
+            rents.append(rent["max"] / 100)
+    rent_str = f"{min(rents):.0f}-{max(rents):.0f} EUR/month" if rents else "N/A"
     modes_str = ", ".join(mode_types) if mode_types else "N/A"
 
-    # Equipment
-    equipments = item.get("equipments", [])
-    equip_str = ", ".join(e.get("label", "") for e in equipments) if equipments else "N/A"
-
-    # Area
     area = item.get("area", {})
-    area_str = f"{area.get('min', '?')}–{area.get('max', '?')} m²"
+    area_str = f"{area.get('min', '?')}-{area.get('max', '?')} m2"
 
+    return {
+        "name": name,
+        "address": address,
+        "rent": rent_str,
+        "area": area_str,
+        "type": modes_str,
+        "url": listing_url,
+    }
+
+
+def _build_batch_html(items: List[dict]) -> str:
+    interval_minutes = max(1, get_current_poll_interval() // 60)
+    if not items:
+        return f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #e63946;">CROUS update ({interval_minutes} min)</h2>
+            <p><strong>Pas de logement dispo.</strong></p>
+            <p style="color: #888; font-size: 12px;">Sent by your CROUS scraper bot.</p>
+        </body>
+        </html>
+        """
+
+    rows = []
+    for item in items:
+        listing = _extract_listing(item)
+        rows.append(
+            (
+                "<tr>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['name']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['rent']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['area']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['type']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['address']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'><a href='{listing['url']}'>Open</a></td>"
+                "</tr>"
+            )
+        )
+
+    rows_html = "\n".join(rows)
     return f"""
     <html>
-    <body style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px;">
-        <h2 style="color: #e63946;">🏠 CROUS room just dropped!</h2>
-        <table style="border-collapse: collapse; width: 100%;">
-            <tr>
-                <td style="padding: 8px; font-weight: bold; width: 140px;">Residence</td>
-                <td style="padding: 8px;">{name}</td>
-            </tr>
-            <tr style="background: #f4f4f4;">
-                <td style="padding: 8px; font-weight: bold;">Address</td>
-                <td style="padding: 8px;">{address}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; font-weight: bold;">Rent</td>
-                <td style="padding: 8px;">{rent_str}</td>
-            </tr>
-            <tr style="background: #f4f4f4;">
-                <td style="padding: 8px; font-weight: bold;">Area</td>
-                <td style="padding: 8px;">{area_str}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; font-weight: bold;">Type</td>
-                <td style="padding: 8px;">{modes_str}</td>
-            </tr>
-            <tr style="background: #f4f4f4;">
-                <td style="padding: 8px; font-weight: bold;">Equipment</td>
-                <td style="padding: 8px;">{equip_str}</td>
-            </tr>
+    <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+        <h2 style="color: #e63946;">CROUS: {len(items)} new listing(s) in the last {interval_minutes} minutes</h2>
+        <table style="border-collapse: collapse; width: 100%; font-size: 14px;">
+            <thead>
+                <tr style="background: #f6f6f6;">
+                    <th style="padding: 8px; text-align: left;">Residence</th>
+                    <th style="padding: 8px; text-align: left;">Rent</th>
+                    <th style="padding: 8px; text-align: left;">Area</th>
+                    <th style="padding: 8px; text-align: left;">Type</th>
+                    <th style="padding: 8px; text-align: left;">Address</th>
+                    <th style="padding: 8px; text-align: left;">Link</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
         </table>
-        <br>
-        <a href="{listing_url}"
-           style="background: #e63946; color: white; padding: 12px 24px;
-                  text-decoration: none; border-radius: 5px; font-weight: bold;
-                  display: inline-block;">
-            View listing →
-        </a>
-        <p style="color: #999; font-size: 12px; margin-top: 20px;">
-            Sent by your CROUS scraper bot — go get it! 🎯
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
+            Sent by your CROUS scraper bot.
         </p>
     </body>
     </html>
     """
 
 
-def send_alert(item: dict):
-    if not BREVO_API_KEY:
-        logging.error("BREVO_API_KEY is not set. Cannot send email.")
-        return
+def _build_message(items: List[dict], recipients: List[str]) -> EmailMessage:
+    interval_minutes = max(1, get_current_poll_interval() // 60)
+    msg = EmailMessage()
+    msg["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
+    msg["To"] = ", ".join(recipients)
+    if items:
+        msg["Subject"] = f"CROUS alert: {len(items)} new listing(s)"
+        lines = [f"New CROUS listings detected in the last {interval_minutes} minutes:", ""]
+        for item in items:
+            listing = _extract_listing(item)
+            lines.append(f"- {listing['name']} ({listing['rent']})")
+            lines.append(f"  {listing['url']}")
+        msg.set_content("\n".join(lines))
+    else:
+        msg["Subject"] = "CROUS update: pas de logement dispo"
+        msg.set_content(f"Pas de logement dispo sur les {interval_minutes} dernieres minutes.")
 
+    msg.add_alternative(_build_batch_html(items), subtype="html")
+    return msg
+
+
+def _missing_smtp_config() -> bool:
+    required = {
+        "SMTP_HOST": SMTP_HOST,
+        "SMTP_PORT": SMTP_PORT,
+        "SMTP_USERNAME": SMTP_USERNAME,
+        "SMTP_PASSWORD": SMTP_PASSWORD,
+        "SENDER_EMAIL": SENDER_EMAIL,
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        logging.error(
+            "SMTP config missing: %s. Set them in .env or GitHub Secrets.",
+            ", ".join(missing),
+        )
+        return True
+    return False
+
+
+def _open_smtp():
+    security = SMTP_SECURITY
+    if security not in {"starttls", "ssl", "none"}:
+        logging.warning("Unknown SMTP_SECURITY='%s'. Falling back to starttls.", security)
+        security = "starttls"
+
+    if security == "ssl":
+        return smtplib.SMTP_SSL(
+            SMTP_HOST,
+            SMTP_PORT,
+            timeout=30,
+            context=ssl.create_default_context(),
+        )
+
+    client = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
+    if security == "starttls":
+        client.starttls(context=ssl.create_default_context())
+    return client
+
+
+def send_alerts(items: List[dict]) -> bool:
     recipients = load_recipients()
     if not recipients:
-        logging.error("No recipients configured. Add emails to recipients.txt or set RECIPIENT_EMAIL in .env")
-        return
+        logging.error("No recipients configured. Set RECIPIENT_EMAIL in .env.")
+        return False
+    if _missing_smtp_config():
+        return False
 
-    residence = item.get("residence", {})
-    name = item.get("label", residence.get("label", "Unknown listing"))
-
+    msg = _build_message(items, recipients)
     try:
-        client = Brevo(api_key=BREVO_API_KEY)
-        client.transactional_emails.send_transac_email(
-            sender=SendTransacEmailRequestSender(
-                email=SENDER_EMAIL,
-                name=SENDER_NAME,
-            ),
-            to=[
-                SendTransacEmailRequestToItem(email=email, name=email.split("@")[0])
-                for email in recipients
-            ],
-            subject=f"🏠 CROUS room available: {name}",
-            html_content=build_html(item),
-        )
-        logging.info(f"Email sent for listing: {name} → {', '.join(recipients)}")
-
-    except ApiError as e:
-        logging.error(f"Brevo API error {e.status_code}: {e.body}")
+        with _open_smtp() as client:
+            client.login(SMTP_USERNAME, SMTP_PASSWORD)
+            client.send_message(msg)
+        if items:
+            logging.info(
+                "Batch email sent for %d new listing(s) -> %s",
+                len(items),
+                ", ".join(recipients),
+            )
+        else:
+            logging.info("Status email sent (pas de logement dispo) -> %s", ", ".join(recipients))
+        return True
     except Exception as e:
-        logging.error(f"Unexpected error sending email: {e}")
+        logging.error("Unexpected SMTP error while sending batch email: %s", e)
+        return False
+
+
+def send_alert(item: dict) -> bool:
+    # Backward-compatible wrapper.
+    return send_alerts([item])

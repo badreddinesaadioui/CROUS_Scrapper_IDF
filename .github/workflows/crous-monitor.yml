@@ -1,0 +1,130 @@
+name: CROUS Monitor
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "2,17,32,47 * * * 1,3,5"
+    - cron: "*/5 * * * 2,4"
+  workflow_dispatch:
+    inputs:
+      reset_state:
+        description: "Set to true to clear seen IDs and resend current available listings once"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: crous-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore previous state artifact
+        uses: dawidd6/action-download-artifact@v11
+        with:
+          workflow: crous-monitor.yml
+          name: seen-state
+          path: .
+          search_artifacts: true
+          if_no_artifact_found: warn
+
+      - name: Ensure valid state file
+        run: |
+          if [ ! -f seen_ids.json ]; then
+            echo "[]" > seen_ids.json
+          fi
+          python - <<'PY'
+          import json
+          path = "seen_ids.json"
+          try:
+              with open(path, "r", encoding="utf-8") as f:
+                  json.load(f)
+          except Exception:
+              with open(path, "w", encoding="utf-8") as f:
+                  json.dump([], f)
+          PY
+
+      - name: Run monitor once
+        env:
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          SENDER_EMAIL: outaboo532@gmail.com
+          RECIPIENT_EMAIL: abderrazzak.outzoula@centrale-casablanca.ma
+          RESET_STATE: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_state || 'false' }}
+          RUN_ONCE: "true"
+        run: python main.py
+
+      - name: Upload updated state artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seen-state
+          path: seen_ids.json
+          retention-days: 90
+          overwrite: true
+
+      - name: Chain next run
+        if: always() && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.request
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          now = datetime.now(ZoneInfo("Europe/Paris"))
+          interval_seconds = 5 * 60 if now.weekday() in {1, 3} else 15 * 60
+          time.sleep(interval_seconds)
+
+          owner, repo = os.environ["REPO"].split("/", 1)
+          ref_name = os.environ.get("REF_NAME", "main")
+          token = os.environ["GH_TOKEN"]
+
+          payload = json.dumps(
+              {
+                  "ref": ref_name,
+                  "inputs": {"reset_state": "false"},
+              }
+          ).encode("utf-8")
+
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/crous-monitor.yml/dispatches",
+              data=payload,
+              method="POST",
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+                  "User-Agent": "crous-monitor-chain",
+              },
+          )
+
+          with urllib.request.urlopen(req, timeout=30) as response:
+              print(f"queued_next_run_status={response.status}")
+          PY

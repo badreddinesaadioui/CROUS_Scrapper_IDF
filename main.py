@@ -19,9 +19,9 @@ import sys
 from typing import List
 
 from scraper import load_idf_ids, fetch_available_accommodations
-from notifier import send_alert
+from notifier import send_alerts
 from state import load_seen_ids, save_seen_ids
-from config import POLL_INTERVAL
+from config import get_current_poll_interval, is_weekend
 import os
 
 logging.basicConfig(
@@ -38,22 +38,39 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def check(idf_rows: List[dict], seen_ids: set) -> set:
+    if is_weekend():
+        logging.info("Weekend mode active: skipping scan and emails.")
+        save_seen_ids(seen_ids)
+        return seen_ids
+
     available = fetch_available_accommodations(idf_rows)
 
     if not available:
         logging.info("Nothing available right now. Patience...")
+        if not send_alerts([]):
+            logging.warning("Failed to send status email; will retry next scan.")
+        save_seen_ids(seen_ids)
         return seen_ids
 
     new_listings = [item for item in available if str(item.get("id")) not in seen_ids]
 
     if new_listings:
-        logging.info(f"🎉 {len(new_listings)} NEW listing(s) found!")
-        for item in new_listings:
-            acc_id = str(item.get("id"))
-            seen_ids.add(acc_id)
-            send_alert(item)
+        logging.info(f"🎉 {len(new_listings)} NEW listing(s) found in this window.")
+        if send_alerts(new_listings):
+            seen_ids.update(
+                str(item.get("id"))
+                for item in new_listings
+                if item.get("id") is not None
+            )
+        else:
+            logging.warning(
+                "Batch alert send failed; all %d listing(s) will be retried next scan.",
+                len(new_listings),
+            )
     else:
-        logging.info(f"{len(available)} available but all already seen — no new alerts.")
+        logging.info(f"{len(available)} available but all already seen — sending status email.")
+        if not send_alerts([]):
+            logging.warning("Failed to send status email; will retry next scan.")
 
     save_seen_ids(seen_ids)
     return seen_ids
@@ -77,6 +94,15 @@ def main():
         seen_ids = load_seen_ids()
         logging.info(f"Loaded {len(seen_ids)} previously seen IDs from state.")
 
+    run_once = os.getenv("RUN_ONCE", "").lower() == "true"
+    if run_once:
+        logging.info("RUN_ONCE=true — running a single scan and exiting.")
+        try:
+            check(idf_rows, seen_ids)
+        except Exception as e:
+            logging.error(f"Unhandled error during single scan: {e}", exc_info=True)
+        return
+
     while True:
         try:
             seen_ids = check(idf_rows, seen_ids)
@@ -86,8 +112,9 @@ def main():
         except Exception as e:
             logging.error(f"Unhandled error: {e}", exc_info=True)
 
-        logging.info(f"Next scan in {POLL_INTERVAL}s...\n")
-        time.sleep(POLL_INTERVAL)
+        poll_interval = get_current_poll_interval()
+        logging.info(f"Next scan in {poll_interval}s...\n")
+        time.sleep(poll_interval)
 
 
 if __name__ == "__main__":

@@ -2,9 +2,12 @@
 
 I was looking for a student room in Paris and quickly realized the CROUS website is kind of a joke to navigate. The map search only shows rooms that are "actively listed" — meaning most of the time it's just empty and you think nothing's available. But turns out there's a whole database of rooms sitting behind the scenes with IDs from 1 to 3132, each with their own page, and some of them quietly flip to available without ever showing up on the map.
 
-So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls them every 60 seconds. The second something opens up — you get an email. No more refreshing the map hoping something appears.
+So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls on a weekday schedule:
+- Tuesday + Thursday: every 5 minutes
+- Monday + Wednesday + Friday: every 15 minutes
+- Weekend: no email
 
-Zero paid services. Just Python and a free Brevo account.
+Zero paid services. Just Python and a standard SMTP account.
 
 ## The trick
 
@@ -21,7 +24,7 @@ Call it with any ID from 1 to 3132 and you get back full room details including 
 ```
 build_csv.py   ->  hits all 3132 IDs once, dumps everything to all_accommodations.csv
 filter_idf.py  ->  keeps only IDF (Paris + suburbs + Clichy), saves idf_accommodations.csv
-main.py        ->  polls those ~420 rooms every 60s, emails you when one flips available
+main.py        ->  polls on a weekday schedule and sends one email per scan window
 ```
 
 When a room drops, the email tells you the name and full address of the residence, rent in euros (the API stores it in cents for some reason, we convert it), room size in m2, whether it's solo, couple or coloc, and what equipment is included.
@@ -38,13 +41,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# open .env and paste your Brevo API key
+# open .env and fill your SMTP credentials
 ```
 
-You only need one external account — Brevo for sending emails (free, 300/day, no credit card):
-1. Sign up at brevo.com
-2. SMTP & API -> API Keys -> generate a key -> paste it in `.env`
-3. Senders -> add your sender email and verify it
+Minimal setup (Gmail):
+1. Set `SENDER_EMAIL`
+2. Set `RECIPIENT_EMAIL`
+3. Set `EMAIL_APP_PASSWORD` (Google App Password)
+
+Advanced setup (optional): override `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
 
 ## Running it
 
@@ -61,19 +66,27 @@ Then run the bot:
 python3 main.py
 ```
 
-It'll sit there scanning all ~420 IDF rooms every 60 seconds and email you the instant something opens up.
+It'll scan all ~420 IDF rooms and send one email per scan window:
+- Tuesday + Thursday: every 5 minutes
+- Monday + Wednesday + Friday: every 15 minutes
+- Saturday + Sunday: no email
 
 You can also just leave it running on your machine — keep the terminal open and don't close the laptop. If you close the lid on a MacBook it will sleep even if plugged in and the script stops. To avoid that go to System Settings -> Battery -> Options and enable "Prevent automatic sleeping when the display is off".
 
-Or deploy it to Railway so your machine doesn't have to stay on. Push to a private GitHub repo, go to railway.app, connect the repo, add your 3 env vars in the Variables tab and it runs as a persistent background worker for free.
+Or deploy it for free on GitHub Actions (already configured in `.github/workflows/crous-monitor.yml`). It runs in the cloud even if your computer is off.
 
 ## Environment variables
 
 | Variable | What it is |
 |---|---|
-| `BREVO_API_KEY` | Your Brevo API key |
-| `SENDER_EMAIL` | The address emails are sent from (must be verified in Brevo) |
+| `EMAIL_APP_PASSWORD` | App password (recommended for Gmail) |
+| `SENDER_EMAIL` | Sender email shown in outgoing alerts |
 | `RECIPIENT_EMAIL` | Who gets the alerts — separate multiple emails with commas |
+| `SMTP_HOST` | Optional manual SMTP host override |
+| `SMTP_PORT` | Optional manual SMTP port override |
+| `SMTP_SECURITY` | Optional: `starttls`, `ssl`, or `none` |
+| `SMTP_USERNAME` | Optional manual SMTP username override |
+| `SMTP_PASSWORD` | Optional manual SMTP password override |
 
 For multiple recipients just comma-separate them: `you@gmail.com,friend@gmail.com,other@gmail.com`
 
@@ -83,7 +96,7 @@ For multiple recipients just comma-separate them: `you@gmail.com,friend@gmail.co
 crous_scrapper/
 ├── main.py          - the loop that runs forever
 ├── scraper.py       - polls each IDF room's API endpoint
-├── notifier.py      - builds and sends the email via Brevo
+├── notifier.py      - builds and sends the email via SMTP
 ├── state.py         - remembers which rooms we've already alerted on
 ├── config.py        - loads everything from .env
 ├── build_csv.py     - one-time: crawls all 3132 IDs into a CSV
